@@ -17,18 +17,27 @@ import scala.jdk.CollectionConverters._
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
 
+import com.rawlabs.das.sdk.DASExecuteResult
+import com.rawlabs.protocol.das.v1.query.{Operator, Qual, SimpleQual}
 import com.rawlabs.protocol.das.v1.tables.{Column, Row}
 import com.rawlabs.protocol.das.v1.types.{Value, ValueDouble, ValueInt, ValueString}
 import com.typesafe.scalalogging.StrictLogging
 
 class DASSqliteSimpleTest extends AnyFunSuite with BeforeAndAfterAll with StrictLogging {
 
-  test("read mydb file") {
-    val resourceUrl = getClass.getResource("/mydb")
-    val file = new java.io.File(resourceUrl.toURI)
-    val fullPath = file.getAbsolutePath
+  private var sdk: DASSqlite = _
 
-    val sdk = new DASSqlite(Map("database" -> fullPath))
+  override def beforeAll(): Unit = {
+    super.beforeAll()
+    sdk = buildSdk()
+  }
+
+  override def afterAll(): Unit = {
+    sdk.close()
+    super.afterAll()
+  }
+
+  test("read mydb file") {
     val defs = sdk.tableDefinitions
     assert(defs.nonEmpty, "tableDefinitions should not be empty.")
     val names = defs.map(_.getTableId.getName)
@@ -39,11 +48,7 @@ class DASSqliteSimpleTest extends AnyFunSuite with BeforeAndAfterAll with Strict
 
     val rs =
       sdk.getTable("COMPANY").get.execute(Seq.empty, Seq("ID", "NAME", "AGE", "ADDRESS", "SALARY"), Seq.empty, None)
-    val buf = scala.collection.mutable.ListBuffer[Row]()
-    while (rs.hasNext) {
-      buf += rs.next()
-    }
-    rs.close()
+    val buf = collectAllRows(rs)
 
     assert(
       buf.toList == List(
@@ -53,8 +58,80 @@ class DASSqliteSimpleTest extends AnyFunSuite with BeforeAndAfterAll with Strict
         buildMyDbRow(4, "Mark", 25, "Rich-Mond ", 65000.0),
         buildMyDbRow(5, "David", 27, "Texas", 85000.0),
         buildMyDbRow(6, "Kim", 22, "South-Hall", 45000.0)))
+  }
 
-    sdk.close()
+  test("filter mydb with operation that pushes down") {
+    val rs =
+      sdk
+        .getTable("COMPANY")
+        .get
+        .execute(
+          Seq(
+            Qual
+              .newBuilder()
+              .setName("ID")
+              .setSimpleQual(
+                SimpleQual
+                  .newBuilder()
+                  .setOperator(Operator.EQUALS)
+                  .setValue(Value.newBuilder().setInt(ValueInt.newBuilder().setV(1)))
+                  .build())
+              .build()),
+          Seq("ID", "NAME", "AGE", "ADDRESS", "SALARY"),
+          Seq.empty,
+          None)
+    val buf = collectAllRows(rs)
+    assert(buf.toList == List(buildMyDbRow(1, "Paul", 32, "California", 20000.0)))
+  }
+
+  test("filter mydb with operation that does NOT push down") {
+    val rs =
+      sdk
+        .getTable("COMPANY")
+        .get
+        .execute(
+          Seq(
+            Qual
+              .newBuilder()
+              .setName("NAME")
+              .setSimpleQual(
+                SimpleQual
+                  .newBuilder()
+                  .setOperator(Operator.ILIKE)
+                  .setValue(Value.newBuilder().setString(ValueString.newBuilder().setV("PAUL")))
+                  .build())
+              .build()),
+          Seq("ID", "NAME", "AGE", "ADDRESS", "SALARY"),
+          Seq.empty,
+          None)
+    val buf = collectAllRows(rs)
+
+    // Since we do NOT push down, we return the entire table
+    assert(
+      buf.toList == List(
+        buildMyDbRow(1, "Paul", 32, "California", 20000.0),
+        buildMyDbRow(2, "Allen", 25, "Texas", 15000.0),
+        buildMyDbRow(3, "Teddy", 23, "Norway", 20000.0),
+        buildMyDbRow(4, "Mark", 25, "Rich-Mond ", 65000.0),
+        buildMyDbRow(5, "David", 27, "Texas", 85000.0),
+        buildMyDbRow(6, "Kim", 22, "South-Hall", 45000.0)))
+  }
+
+  private def buildSdk(): DASSqlite = {
+    val resourceUrl = getClass.getResource("/mydb")
+    val file = new java.io.File(resourceUrl.toURI)
+    val fullPath = file.getAbsolutePath
+
+    new DASSqlite(Map("database" -> fullPath))
+  }
+
+  private def collectAllRows(rs: DASExecuteResult): Seq[Row] = {
+    val buf = scala.collection.mutable.ListBuffer[Row]()
+    while (rs.hasNext) {
+      buf += rs.next()
+    }
+    rs.close()
+    buf.toList
   }
 
   private def buildMyDbRow(id: Int, name: String, age: Int, address: String, salary: Double): Row = {

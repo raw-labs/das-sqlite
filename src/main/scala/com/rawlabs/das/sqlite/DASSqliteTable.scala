@@ -47,9 +47,11 @@ class DASSqliteTable(backend: DASSqliteBackend, defn: TableDefinition, maybePrim
    */
   override def tableEstimate(quals: Seq[Qual], columns: Seq[String]): TableEstimate = {
     // 1) Build the same WHERE clause used in `execute(...)`.
+    val supportedQuals = quals.flatMap(qualToSql)
+
     val whereClause =
-      if (quals.isEmpty) ""
-      else "\nWHERE " + quals.map(qualToSql).mkString(" AND ")
+      if (supportedQuals.isEmpty) ""
+      else "\nWHERE " + supportedQuals.mkString(" AND ")
 
     // 2) Possibly use columns if you want to estimate only the subset of columns,
     //    or just use "*" or "1" to get an overall row count approximation.
@@ -210,9 +212,10 @@ class DASSqliteTable(backend: DASSqliteBackend, defn: TableDefinition, maybePrim
       else columns.map(quoteIdentifier).mkString(", ")
 
     // Build WHERE from `quals`
+    val supportedQuals = quals.flatMap(qualToSql)
     val whereClause =
-      if (quals.isEmpty) ""
-      else "\nWHERE " + quals.map(qualToSql).mkString(" AND ")
+      if (supportedQuals.isEmpty) ""
+      else "\nWHERE " + supportedQuals.mkString(" AND ")
 
     // Build ORDER BY
     val orderByClause =
@@ -315,76 +318,81 @@ class DASSqliteTable(backend: DASSqliteBackend, defn: TableDefinition, maybePrim
     str.replace("'", "''") // naive approach for single quotes
 
   /**
-   * Maps an Operator enum to the corresponding SQL string. Some operators like ILIKE are not native to SQLite, so we
-   * provide a naive fallback or throw an exception.
+   * Maps an Operator enum to the corresponding SQL string. Some operators like ILIKE are not native to SQLite, so we do
+   * not handle them.
    */
-  private def operatorToSql(op: Operator): String = {
+  private def operatorToSql(op: Operator): Option[String] = {
     op match {
-      case Operator.EQUALS                => "="
-      case Operator.NOT_EQUALS            => "<>"
-      case Operator.LESS_THAN             => "<"
-      case Operator.LESS_THAN_OR_EQUAL    => "<="
-      case Operator.GREATER_THAN          => ">"
-      case Operator.GREATER_THAN_OR_EQUAL => ">="
-      case Operator.LIKE                  => "LIKE"
-      case Operator.NOT_LIKE              => "NOT LIKE"
+      case Operator.EQUALS                => Some("=")
+      case Operator.NOT_EQUALS            => Some("<>")
+      case Operator.LESS_THAN             => Some("<")
+      case Operator.LESS_THAN_OR_EQUAL    => Some("<=")
+      case Operator.GREATER_THAN          => Some(">")
+      case Operator.GREATER_THAN_OR_EQUAL => Some(">=")
+      case Operator.LIKE                  => Some("LIKE")
+      case Operator.NOT_LIKE              => Some("NOT LIKE")
 
-      // SQLite does not have native ILIKE support. We can fallback to "LIKE" or fail.
-      case Operator.ILIKE     => throw new IllegalArgumentException("SQLite does not support ILIKE.")
-      case Operator.NOT_ILIKE => throw new IllegalArgumentException("SQLite does not support NOT ILIKE.")
+      // May be less typical in a WHERE clause
+      case Operator.PLUS  => Some("+")
+      case Operator.MINUS => Some("-")
+      case Operator.TIMES => Some("*")
+      case Operator.DIV   => Some("/")
+      case Operator.MOD   => Some("%")
+      case Operator.AND   => Some("AND")
+      case Operator.OR    => Some("OR")
 
-      // Arithmetic operators might not be typical in a WHERE Qual
-      case Operator.PLUS  => "+"
-      case Operator.MINUS => "-"
-      case Operator.TIMES => "*"
-      case Operator.DIV   => "/"
-      case Operator.MOD   => "%"
-      case Operator.AND   => "AND"
-      case Operator.OR    => "OR"
-
-      case _ => throw new IllegalArgumentException(s"Unsupported operator: $op")
+      case _ => None
     }
   }
 
   /**
    * `IsAllQual` means "col op ALL these values", we interpret as multiple AND clauses
    */
-  private def isAllQualToSql(colName: String, iq: IsAllQual): String = {
-    val opStr = operatorToSql(iq.getOperator)
-    val clauses = iq.getValuesList.asScala.map(v => s"$colName $opStr ${valueToSql(v)}")
-    // Combine with AND
-    clauses.mkString("(", " AND ", ")")
+  private def isAllQualToSql(colName: String, iq: IsAllQual): Option[String] = {
+    operatorToSql(iq.getOperator) match {
+      case Some(opStr) =>
+        val clauses = iq.getValuesList.asScala.map(v => s"$colName $opStr ${valueToSql(v)}")
+        // Combine with AND
+        Some(clauses.mkString("(", " AND ", ")"))
+      case None => None
+    }
   }
 
   /**
    * `IsAnyQual` means "col op ANY of these values", we interpret as multiple OR clauses
    */
-  private def isAnyQualToSql(colName: String, iq: IsAnyQual): String = {
-    val opStr = operatorToSql(iq.getOperator)
-    val clauses = iq.getValuesList.asScala.map(v => s"$colName $opStr ${valueToSql(v)}")
-    // Combine with OR
-    clauses.mkString("(", " OR ", ")")
+  private def isAnyQualToSql(colName: String, iq: IsAnyQual): Option[String] = {
+    operatorToSql(iq.getOperator) match {
+      case Some(opStr) =>
+        val clauses = iq.getValuesList.asScala.map(v => s"$colName $opStr ${valueToSql(v)}")
+        // Combine with OR
+        Some(clauses.mkString("(", " OR ", ")"))
+      case None => None
+    }
   }
 
   /**
    * `SimpleQual` is a single condition: "col op value"
    */
-  private def simpleQualToSql(colName: String, sq: SimpleQual): String = {
+  private def simpleQualToSql(colName: String, sq: SimpleQual): Option[String] = {
     if (sq.getValue.hasNull && sq.getOperator == Operator.EQUALS) {
-      s"$colName IS NULL"
+      Some(s"$colName IS NULL")
     } else if (sq.getValue.hasNull && sq.getOperator == Operator.NOT_EQUALS) {
-      s"$colName IS NOT NULL"
+      Some(s"$colName IS NOT NULL")
     } else {
-      val opStr = operatorToSql(sq.getOperator)
-      val valStr = valueToSql(sq.getValue)
-      s"$colName $opStr $valStr"
+      operatorToSql(sq.getOperator) match {
+        case Some(opStr) =>
+          val valStr = valueToSql(sq.getValue)
+          Some(s"$colName $opStr $valStr")
+        case None => None
+      }
     }
   }
 
   /**
    * Converts any `Qual` to a SQL snippet. We handle `SimpleQual`, `IsAnyQual`, or `IsAllQual`.
    */
-  private def qualToSql(q: Qual): String = {
+  private def qualToSql(q: Qual): Option[String] = {
     val colName = quoteIdentifier(q.getName)
     if (q.hasSimpleQual) {
       simpleQualToSql(colName, q.getSimpleQual)
