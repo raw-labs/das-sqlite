@@ -116,7 +116,7 @@ class DASSqliteTableTest extends AnyFunSuite with BeforeAndAfterAll with StrictL
   test("DASSqlite.tableDefinitions returns our test table") {
     val defs = sdk.tableDefinitions
     assert(defs.nonEmpty, "tableDefinitions should not be empty.")
-    val names = defs.map(_.getTableId.getName.toLowerCase)
+    val names = defs.map(_.getTableId.getName)
     assert(names.contains("all_types"), "We expect 'all_types' table in the DB.")
   }
 
@@ -143,7 +143,7 @@ class DASSqliteTableTest extends AnyFunSuite with BeforeAndAfterAll with StrictL
     assert(defn.getTableId.getName.equalsIgnoreCase("all_types"), "Expected table name 'all_types'")
     assert(defn.getColumnsCount > 0, "We expect at least 1 column in the schema.")
 
-    val columnNames = defn.getColumnsList.asScala.map(_.getName.toLowerCase).toSet
+    val columnNames = defn.getColumnsList.asScala.map(_.getName).toSet
     val expectedSomeColumns = Set(
       "id",
       "col_integer",
