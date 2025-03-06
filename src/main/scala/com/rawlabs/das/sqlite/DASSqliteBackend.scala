@@ -77,7 +77,7 @@ private class DASSqliteBackend(dataSource: DataSource) extends StrictLogging {
         val tableMap = scala.collection.mutable.Map.empty[String, DASSqliteTable]
 
         while (rs.next()) {
-          val tableName = rs.getString("name").toLowerCase
+          val tableName = rs.getString("name")
           val pkOpt = primaryKey(conn, tableName)
           val tdef = tableDefinition(conn, tableName)
           tableMap += tableName -> new DASSqliteTable(this, tdef, pkOpt)
@@ -141,7 +141,7 @@ private class DASSqliteBackend(dataSource: DataSource) extends StrictLogging {
           val colCount = meta.getColumnCount
 
           for (i <- 1 to colCount) {
-            val colName = meta.getColumnName(i).toLowerCase
+            val colName = meta.getColumnName(i)
             val value = toDASValue(rs, i)
             rowBuilder.addColumns(Column.newBuilder().setName(colName).setData(value).build())
           }
@@ -301,7 +301,7 @@ private class DASSqliteBackend(dataSource: DataSource) extends StrictLogging {
           val meta = rs.getMetaData
           val colCount = meta.getColumnCount
           for (i <- 1 to colCount) {
-            val colName = meta.getColumnName(i).toLowerCase
+            val colName = meta.getColumnName(i)
             val value = toDASValue(rs, i)
             rowBuilder.addColumns(
               Column
@@ -341,7 +341,7 @@ private class DASSqliteBackend(dataSource: DataSource) extends StrictLogging {
             pkColumns += rs.getString("name")
           }
         }
-        if (pkColumns.size == 1) Some(pkColumns.head.toLowerCase)
+        if (pkColumns.size == 1) Some(pkColumns.head)
         else None
       }
     }
