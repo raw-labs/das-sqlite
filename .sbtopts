@@ -1,0 +1,7 @@
+-J-Xmx4G
+-J-Xms1G
+-J-Xss4M
+-J-XX:+UseG1GC
+-J--add-opens=java.base/java.lang=ALL-UNNAMED
+-J--add-opens=java.base/java.util=ALL-UNNAMED
+-J-XX:+CrashOnOutOfMemoryError
