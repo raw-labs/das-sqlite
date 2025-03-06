@@ -23,9 +23,6 @@ import com.typesafe.scalalogging.StrictLogging
 
 class DASSqliteSimpleTest extends AnyFunSuite with BeforeAndAfterAll with StrictLogging {
 
-  // ===========================================================================
-  // Tests for DASSqlite (top-level) methods
-  // ===========================================================================
   test("read mydb file") {
     val resourceUrl = getClass.getResource("/mydb")
     val file = new java.io.File(resourceUrl.toURI)
