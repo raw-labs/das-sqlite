@@ -70,7 +70,7 @@ jobs:
           with:
             token: ${{ secrets.RAW_CI_PAT }}
             repository: raw-labs/mvp-deployer
-            event-type: das-salesforce-integration-cd
+            event-type: das-sqlite-integration-cd
             client-payload: |-
               {
                 "aws_region": "eu-west-1",
