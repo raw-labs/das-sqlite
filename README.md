@@ -11,12 +11,30 @@
 
 ## How to use
 
-First you need to build the project:
+### Prerequisites
+
+You need to have [sbt](https://www.scala-sbt.org/) installed to build the project.
+
+You can install sbt using [sdkman](https://sdkman.io/):
 ```bash
-$ sbt "project docker" "docker:publishLocal"
+$ sdk install sbt
 ```
 
-This will create a docker image with the name `das-excel`.
+### Running the server
+
+You can run the server with the following command:
+```bash
+$ sbt run
+```
+
+### Docker
+
+To run the server in a docker container you need to follow these steps:
+
+First, you need to build the project:
+```bash
+$ sbt "docker:publishLocal"
+```
 
 Then you can run the image with the following command:
 ```bash
