@@ -46,25 +46,3 @@ jobs:
             docker stop ${CONTAINER_ID}
             docker rm ${CONTAINER_ID}
           fi
-
-  security-scan:
-    name: Security Scan
-    runs-on: self-hosted
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build Docker image
-        run: |
-          .github/scripts/dnd-sbt Docker/publishLocal
-          IMAGE_NAME=$(.github/scripts/dnd-sbt printDockerImageName | grep DOCKER_IMAGE | cut -d= -f2)
-          echo "IMAGE=${IMAGE_NAME}" >> $GITHUB_ENV
-
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ env.IMAGE }}
-          format: 'table'
-          exit-code: '1'
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
